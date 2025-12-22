@@ -1,9 +1,11 @@
-# Connect 4 Game
+# Connect 4 Game (AI Competition Framework)
 
 ![Game Animation](https://upload.wikimedia.org/wikipedia/commons/a/ad/Connect_Four.gif)
 
 
-This repository contains code for the Connect 4 game. It provides the interface for each player to program game logic, and then for players to be pitted against each other. 
+This repository provides a modular Connect 4 game framework designed for developing and evaluating AI agents. It was created for an Advanced AI course competition at Vanderbilt University, where I served as the Teaching Assistant.
+
+The framework defines a clean player interface that allows participants to implement custom decision-making logic (e.g., search-based or heuristic methods) and compete head-to-head under time and validity constraints.
 
 ## Rules
 
