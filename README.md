@@ -1,6 +1,8 @@
 # Connect 4 Game (AI Competition Framework)
 
-![Game Animation](https://upload.wikimedia.org/wikipedia/commons/a/ad/Connect_Four.gif)
+<div align="center">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/a/ad/Connect_Four.gif" alt="Connect 4 animation">
+</div>
 
 
 This repository provides a modular Connect 4 game framework designed for developing and evaluating AI agents. It was created for an Advanced AI course competition at Vanderbilt University, where I served as the Teaching Assistant.
