@@ -1,6 +1,8 @@
-import copy
 import typing
+from collections import deque
+
 import numpy as np
+
 from player import Player as PlayerParent
 
 MAX_DEPTH = 6 # TODO: optimize this
@@ -10,11 +12,9 @@ class CylinderBoard:
     def __init__(self, board: np.ndarray, connect_number) -> None:
         self.rows, self.cols = board.shape
         self.connect_number = connect_number
-        
-        self.last_player = None
-        # stored as row, col
-        # for quick calculation of winner
-        self.last_action = None
+
+        self.init_player = None
+        self.history = deque()
 
         self.board_all = board != 0
         self.board_p1 = board > 0
@@ -27,8 +27,9 @@ class CylinderBoard:
         row = self.empty_loc[action]
         self.empty_loc[action] -= 1
 
-        self.last_player = player
-        self.last_action = (row, action)
+        if self.init_player is None:
+            self.init_player = player
+        self.history.append(action)
 
         self.board_all[row, action] = True
 
@@ -36,6 +37,27 @@ class CylinderBoard:
             self.board_p1[row, action] = True
         else:
             self.board_p2[row, action] = True
+
+    def undo_act(self) -> None:
+        """Undo the last action taken."""
+
+        assert self.init_player is not None
+
+        last_col = self.history.pop()
+        last_player = self.init_player if (len(self.history) + 1) % 2 == 1 else -self.init_player
+        last_action = (self.empty_loc[last_col] + 1, last_col)
+
+        self.board_all[last_action[0], last_action[1]] = False
+
+        if last_player > 0:
+            self.board_p1[last_action[0], last_action[1]] = False
+        else:
+            self.board_p2[last_action[0], last_action[1]] = False
+
+        self.empty_loc[last_action[1]] += 1
+
+        if len(self.history) <= 0:
+            self.init_player = None
 
     def valid_moves(self) -> typing.Iterable[int]:
         """Returns a list of legal moves."""
@@ -46,39 +68,42 @@ class CylinderBoard:
     def terminal_value(self) -> typing.Optional[int]:
         """Returns integer value for terminal state, None if non-terminal."""
 
-        if self.last_player is not None and self.last_action is not None:
-            board = self.board_p1 if self.last_player > 0 else self.board_p2
+        if self.init_player is not None: # ensure at least one move has been recorded
+            last_player = self.init_player if len(self.history) % 2 == 1 else -self.init_player
+            last_action = (self.empty_loc[self.history[-1]] + 1, self.history[-1])
+
+            board = self.board_p1 if last_player > 0 else self.board_p2
             rng = np.arange(self.connect_number) # add for offsets throughout
 
             # Horizontal
             for offset in range(self.connect_number):
-                r = self.last_action[0]
-                c = (rng + self.last_action[1] - offset) % self.cols
+                r = last_action[0]
+                c = (rng + last_action[1] - offset) % self.cols
                 if np.sum(board[r, c]) >= self.connect_number:
-                    return self.last_player * WIN_VAL
+                    return last_player * WIN_VAL
 
             # Vertical
-            r0 = self.last_action[0]
-            r1 = self.last_action[0] + self.connect_number
-            c = self.last_action[1]
+            r0 = last_action[0]
+            r1 = last_action[0] + self.connect_number
+            c = last_action[1]
             if np.sum(board[r0:r1, c]) >= self.connect_number:
-                return self.last_player * WIN_VAL
+                return last_player * WIN_VAL
 
             # Diagonals
             for offset in range(self.connect_number):
-                r = (rng + self.last_action[0] - offset)
-                c = (rng + self.last_action[1] - offset) % self.cols
+                r = (rng + last_action[0] - offset)
+                c = (rng + last_action[1] - offset) % self.cols
                 if r[0] >= 0 and r[-1] < self.rows:
                     if np.sum(board[r, c]) >= self.connect_number:
-                        return self.last_player * WIN_VAL
+                        return last_player * WIN_VAL
 
             # Diagonals (Flipped)
             for offset in range(self.connect_number):
-                r = (rng + self.last_action[0] - offset)
-                c = (self.last_action[1] + offset - rng) % self.cols
+                r = (rng + last_action[0] - offset)
+                c = (last_action[1] + offset - rng) % self.cols
                 if r[0] >= 0 and r[-1] < self.rows:
                     if np.sum(board[r, c]) >= self.connect_number:
-                        return self.last_player * WIN_VAL
+                        return last_player * WIN_VAL
 
             # Draws
             if np.sum(self.empty_loc) <= -1 * self.cols:
@@ -92,7 +117,7 @@ class CylinderBoard:
         return None
 
     def eval_state(self, player) -> float:
-        """Either returns value of terminal state or the heuristic value of a non-terminal state."""
+        """Returns heuristic value of non-terminal state."""
         # TODO: this heuristic sucks
 
         # just count number of pieces on top for each player
@@ -159,7 +184,12 @@ class Player(PlayerParent):
 
         terminal = board.terminal_value()
         if terminal is not None:
-            return terminal, None
+            if terminal > 0:
+                return terminal - depth, None # penalize deeper wins
+            if terminal < 0:
+                return terminal + depth, None # penalize deeper wins
+            else:
+                return 0, None # draw
         if self._is_cutoff(board, depth):
             return board.eval_state(player), None
         
@@ -167,7 +197,10 @@ class Player(PlayerParent):
         other_player = -1 * player
         move = None
         for a in board.valid_moves():
-            v2, _ = self._min_value(self._result(board, player, a), other_player, alpha, beta, depth + 1)
+            board.act(player, a)
+            v2, _ = self._min_value(board, other_player, alpha, beta, depth + 1)
+            board.undo_act()
+
             if v2 > v:
                 v, move = v2, a
                 alpha = max(alpha, v)
@@ -181,7 +214,12 @@ class Player(PlayerParent):
 
         terminal = board.terminal_value()
         if terminal is not None:
-            return terminal, None
+            if terminal > 0:
+                return terminal - depth, None # penalize deeper wins
+            if terminal < 0:
+                return terminal + depth, None # penalize deeper wins
+            else:
+                return 0, None # draw
         if self._is_cutoff(board, depth):
             return board.eval_state(player), None
 
@@ -189,7 +227,10 @@ class Player(PlayerParent):
         other_player = -1 * player
         move = None
         for a in board.valid_moves():
-            v2, _ = self._max_value(self._result(board, player, a), other_player, alpha, beta, depth + 1)
+            board.act(player, a)
+            v2, _ = self._max_value(board, other_player, alpha, beta, depth + 1)
+            board.undo_act()
+
             if v2 < v:
                 v, move = v2, a
                 beta = min(beta, v)
@@ -202,11 +243,3 @@ class Player(PlayerParent):
         """Checks if search depth is too far."""
 
         return depth >= MAX_DEPTH
-
-    def _result(self, board: CylinderBoard, player, action) -> CylinderBoard:
-        """Returns the result of player taking the given action."""
-        # TODO: This implementation COPIES A NEW BOARD for every move considered.
-        # Extremely inefficient in space and time, needs to be optimized later.
-        cpy = copy.deepcopy(board)
-        cpy.act(player, action)
-        return cpy
