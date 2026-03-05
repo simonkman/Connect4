@@ -5,8 +5,8 @@ import numpy as np
 
 from player import Player as PlayerParent
 
-MAX_DEPTH = 6 # TODO: optimize this
-WIN_VAL = 10000
+MAX_DEPTH = 5 # TODO: optimize this
+WIN_VAL = 1_000_000_000
 
 class CylinderBoard:
     def __init__(self, board: np.ndarray, connect_number) -> None:
@@ -118,15 +118,74 @@ class CylinderBoard:
 
     def eval_state(self, player) -> float:
         """Returns heuristic value of non-terminal state."""
-        # TODO: this heuristic sucks
 
-        # just count number of pieces on top for each player
-        top_piece_rows = self.empty_loc + 1
-        valid_cols = np.where(top_piece_rows < self.rows)[0]
-        
-        p1_cnt = int(np.sum(self.board_p1[top_piece_rows[valid_cols], valid_cols]))
-        p2_cnt = int(np.sum(self.board_p2[top_piece_rows[valid_cols], valid_cols]))
-        return (p1_cnt - p2_cnt) / self.cols
+        # view every line window and calculate "threats" like Victor Allis
+        # a window is a "threat" if it contains only one player's pieces.
+        # its level of threat is proportional to how many pieces are remaining to connect N.
+        # score of each window is a power of 10 of the threat level.
+
+        p1_unrolled = np.hstack((self.board_p1, self.board_p1[:, :self.connect_number - 1]))
+        p2_unrolled = np.hstack((self.board_p2, self.board_p2[:, :self.connect_number - 1]))
+
+        total = 0
+
+        # Horizontal
+        p1_views = np.lib.stride_tricks.sliding_window_view(p1_unrolled, (1, self.connect_number))
+        p2_views = np.lib.stride_tricks.sliding_window_view(p2_unrolled, (1, self.connect_number))
+        for i in range(p1_views.shape[0]):
+            for j in range(p2_views.shape[1]):
+                p1_sum = np.sum(p1_views[i, j])
+                p2_sum = np.sum(p2_views[i, j])
+                if p1_sum > 0 and p2_sum > 0:
+                    continue
+                elif p1_sum > 0:
+                    total += 10 ** (self.connect_number - p1_sum)
+                else:
+                    total += 10 ** (self.connect_number - p2_sum)
+
+        # Vertical
+        p1_views = np.lib.stride_tricks.sliding_window_view(p1_unrolled, (self.connect_number, 1))
+        p2_views = np.lib.stride_tricks.sliding_window_view(p2_unrolled, (self.connect_number, 1))
+        for i in range(p1_views.shape[0]):
+            for j in range(p2_views.shape[1]):
+                p1_sum = np.sum(p1_views[i, j])
+                p2_sum = np.sum(p2_views[i, j])
+                if p1_sum > 0 and p2_sum > 0:
+                    continue
+                elif p1_sum > 0:
+                    total += 10 ** (self.connect_number - p1_sum)
+                else:
+                    total += 10 ** (self.connect_number - p2_sum)
+
+        # Diagonal
+        p1_views = np.lib.stride_tricks.sliding_window_view(p1_unrolled, (self.connect_number, self.connect_number))
+        p2_views = np.lib.stride_tricks.sliding_window_view(p2_unrolled, (self.connect_number, self.connect_number))
+        for i in range(p1_views.shape[0]):
+            for j in range(p2_views.shape[1]):
+                p1_sum = np.trace(p1_views[i, j])
+                p2_sum = np.trace(p2_views[i, j])
+                if p1_sum > 0 and p2_sum > 0:
+                    continue
+                elif p1_sum > 0:
+                    total += 10 ** (self.connect_number - p1_sum)
+                else:
+                    total += 10 ** (self.connect_number - p2_sum)
+
+        # Diagonal (Flipped)
+        p1_views = np.lib.stride_tricks.sliding_window_view(p1_unrolled, (self.connect_number, self.connect_number))
+        p2_views = np.lib.stride_tricks.sliding_window_view(p2_unrolled, (self.connect_number, self.connect_number))
+        for i in range(p1_views.shape[0]):
+            for j in range(p2_views.shape[1]):
+                p1_sum = np.trace(np.fliplr(p1_views[i, j]))
+                p2_sum = np.trace(np.fliplr(p2_views[i, j]))
+                if p1_sum > 0 and p2_sum > 0:
+                    continue
+                elif p1_sum > 0:
+                    total += 10 ** (self.connect_number - p1_sum)
+                else:
+                    total += 10 ** (self.connect_number - p2_sum)
+
+        return total
 
 class Player(PlayerParent):
     def __init__(self, rows, cols, connect_number, 
@@ -143,7 +202,6 @@ class Player(PlayerParent):
         also timed.
         """
         self.piece_color = piece_color
-        self.moves = np.arange(self.cols)
 
     def play(self, board: np.ndarray):
         """
