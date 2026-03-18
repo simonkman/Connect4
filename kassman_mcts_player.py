@@ -59,11 +59,12 @@ class CylinderBoard:
         row = self.empty_loc[action]
         self.empty_loc[action] -= 1
 
-        self.history.append(action)
+        player = self.get_cur_player()
 
+        self.history.append(action)
         self.board_all[row, action] = True
 
-        if self.get_cur_player() > 0:
+        if player > 0:
             self.board_p1[row, action] = True
         else:
             self.board_p2[row, action] = True
