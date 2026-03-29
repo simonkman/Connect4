@@ -8,7 +8,7 @@ import numpy as np
 
 from player import Player as PlayerParent
 
-MAX_TIME = 59  # in seconds, a little lower than the actual 60s
+TIMEOUT_MARGIN = 1  # in seconds, how much earlier we should end execution before actual timeout
 UCB_CONST = math.sqrt(2)  # constant C in UCB1 metric
 
 
@@ -216,7 +216,7 @@ class Player(PlayerParent):
 
         tree = MCTNode(player=1, valid_moves=set(game.valid_moves()))
 
-        end_time = time.monotonic() + MAX_TIME
+        end_time = time.monotonic() + self.timeout_move - TIMEOUT_MARGIN
         while time.monotonic() < end_time:
             leaf = self._select_node(tree, game)
             child = self._expand_node(leaf, game)
